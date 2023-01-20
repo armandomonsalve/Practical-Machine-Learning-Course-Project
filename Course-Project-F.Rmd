@@ -1,0 +1,282 @@
+---
+title: "Practical Machine Learning - Course Project"
+author: "Armando Monsalve"
+date: '2023-01-02'
+output:
+  html_document: default
+  pdf_document: default
+  github_document: default
+---
+
+## Executive Summary
+
+In this report, we are describing how a machine learning algorithm was built to predict the manner in which 6 participants did an exercise. Using cross validation, specifying what the expected out of sample error was, and why some choices were made. This prediction model was also used to predict 20 different test cases.
+
+## Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, my goal will be to use data from accelerometers on the belt, forearm, arm, and dumbbell of 6 participants.
+
+## Loading Data
+
+### Libraries
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(caret)
+library(rattle)
+```
+
+### Data: Trainning set
+```{r}
+
+training_set <-
+  read.csv(
+    file = "C:/Users/ajmon/OneDrive/AJMR/Armando Monsalve/DATA SCIENCE/COURSES/Johns Hopkins University Data Science Course/8 Practical Machine Learning/Week 4/Course Project/pml-training.csv"
+    )
+```
+
+```{r}
+training_set %>%
+  dim()
+```
+
+### Test set
+```{r}
+testing_set <-
+  read.csv(
+    file = "C:/Users/ajmon/OneDrive/AJMR/Armando Monsalve/DATA SCIENCE/COURSES/Johns Hopkins University Data Science Course/8 Practical Machine Learning/Week 4/Course Project/pml-testing.csv"
+    )
+```
+
+```{r}
+testing_set %>%
+  dim()
+```
+
+### Cleaning Training Set
+```{r}
+# Identifying columns that have more than 90% of their data points null
+empty_cols <-
+  which(
+    colSums(is.na(training_set) | training_set == "") > 0.9 * dim(training_set)[1]
+  )
+
+# Removing mostly-null and unnecessary columns
+training_clean <-
+  training_set[, -empty_cols]
+
+training_clean <-
+  training_clean[, -c(1:7)]
+
+```
+
+Let's check how many variables we have left in my training set:
+```{r}
+training_clean %>%
+  dim()
+```
+
+Now, let's take a quick peek at the variables:
+```{r}
+training_clean %>%
+  str()
+```
+
+Lastly, we can check if we have variables in which we don't have much variation. This since if we have a column wherein most of its data points are the same value, it won't serve us well for our prediction.
+```{r}
+nearZeroVar(
+  training_clean
+)
+```
+
+As shown, we don't have any variables that have near-zero variance; so we keep them all for our prediction.
+
+## Validation Partition
+
+Since we need to test our models for out-of-sample error, I'll go ahead and split the set in my final training and validation sets:
+```{r}
+inTrain <-
+  createDataPartition(
+    training_clean$classe
+    , p = 0.7
+    , list = FALSE
+  )
+
+training <-
+  training_clean[inTrain,]
+
+validation <-
+  training_clean[-inTrain,]
+
+# Checking how many rows my 2 sets have:
+training %>%
+  dim()
+
+validation %>%
+  dim()
+
+```
+
+## Building and Testing Predictive Models
+
+I'll build multiple models in order to find the best (accuracy-wise). The models I'll use are: Decision Trees, Random Forest and Gradient Boosted Trees.
+
+### Cross-validation
+
+For each model I'll use cross-validation, so they don't get overfitted results. I'll implement 3-fold cross-validation:
+```{r}
+control <-
+  trainControl(
+    method = "cv"
+    , number = 3
+    , verboseIter = F
+  )
+
+```
+
+### Decision Tree Model
+
+```{r}
+set.seed(12345)
+model_tree <-
+  train(
+    classe ~ .
+    , method = "rpart"
+    , data = training
+    , trControl = control
+    , tuneLength = 4
+  )
+
+# Resulting tree:
+fancyRpartPlot(
+  model_tree$finalModel
+)
+```
+
+Results (Confusion Matrix and Accuracy):
+```{r}
+pred_tree <-
+  predict(
+    model_tree
+    , validation
+  )
+
+confusionMatrix(
+  pred_tree
+  , as.factor(validation$classe)
+)
+```
+Decision Tree Accuracy = 52.8%
+
+### Random Forest
+
+Model and results (confusion matrix and accuracy):
+```{r}
+set.seed(12345)
+model_rf <-
+  train(
+    classe ~ .
+    , method = "rf"
+    , data = training
+    , trControl = control
+    , tuneLength = 5
+  )
+
+pred_rf <-
+  predict(
+    model_rf
+    , validation
+  )
+
+# Confusion Matrix and Accuracy
+confusionMatrix(
+  pred_rf
+  , as.factor(validation$classe)
+)
+```
+Random Forest Accuracy = 99.6%
+
+Let's take a look at the most important variables in the model:
+```{r}
+varImp(
+ model_rf
+)
+```
+
+
+### Gradient Boosted Model
+
+Model:
+```{r message=FALSE, warning=FALSE}
+set.seed(12345)
+model_gbm <-
+  train(
+    classe ~ .
+    , method = "gbm"
+    , data = training
+    , trControl = control
+  )
+```
+
+Confusion matrix and accuracy
+```{r}
+pred_gbm <-
+  predict(
+    model_gbm
+    , validation
+  )
+
+confusionMatrix(
+  pred_gbm
+  , as.factor(validation$classe)
+)
+```
+
+Gradient Boosted Trees Accuracy = 96.2%
+
+Let's check how well cross-validation performed and how it affected model's accuracy:
+```{r}
+plot(
+  model_gbm
+)
+```
+
+### Model selection
+
+Based on accuracy, the best model for our prediction is the Random Forest model with 99% accuracy.
+
+## Predicting classe on test set with selected model
+
+Cleaning test data:
+```{r}
+testing_clean <-
+  testing_set[, -empty_cols]
+
+testing_clean <-
+  testing_clean[, -c(1:7)]
+
+testing_clean %>%
+  dim()
+```
+
+Predicting on test set:
+```{r}
+pred_rf_test <-
+  predict(
+    model_rf
+    , testing_clean
+  )
+
+pred_rf_test
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
